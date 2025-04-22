@@ -25,6 +25,36 @@ export interface GenerateSpeechResponse {
   job_id?: string;
 }
 
+// Safe localStorage wrapper to handle incognito mode and other issues
+const safeStorage = {
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn('localStorage setItem failed:', error);
+      // Fallback to sessionStorage if localStorage fails
+      try {
+        sessionStorage.setItem(key, value);
+      } catch (innerError) {
+        console.error('Both localStorage and sessionStorage failed:', innerError);
+      }
+    }
+  },
+  
+  getItem: (key: string): string | null => {
+    try {
+      const item = localStorage.getItem(key);
+      if (item) return item;
+      
+      // Try sessionStorage as fallback
+      return sessionStorage.getItem(key);
+    } catch (error) {
+      console.warn('Storage getItem failed:', error);
+      return null;
+    }
+  }
+};
+
 // Function to upload voice samples to ElevenLabs
 export async function uploadVoiceSamples(files: File[]): Promise<UploadResponse> {
   try {
@@ -43,7 +73,9 @@ export async function uploadVoiceSamples(files: File[]): Promise<UploadResponse>
     );
     
     const fileDataUrls = await Promise.all(filePromises);
-    localStorage.setItem(`voice_samples_${session_id}`, JSON.stringify(fileDataUrls));
+    
+    // Use our safe storage wrapper
+    safeStorage.setItem(`voice_samples_${session_id}`, JSON.stringify(fileDataUrls));
     
     return {
       success: true,
@@ -67,26 +99,16 @@ export async function generateSpeech(session_id: string, text: string): Promise<
     const job_id = `job_${Date.now()}`;
     
     // Store the job information
-    localStorage.setItem(`job_${job_id}`, JSON.stringify({
+    const jobData = {
       session_id,
       text,
       status: 'pending',
       progress: 0,
       message: 'Job created, waiting to start processing...'
-    }));
+    };
     
-    // Simulate starting the job
-    setTimeout(() => {
-      const jobData = {
-        session_id,
-        text,
-        status: 'completed',
-        progress: 100,
-        message: 'Speech generation completed',
-        audio_url: 'https://example.com/sample-audio.wav' // This would be the actual URL from ElevenLabs
-      };
-      localStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
-    }, 3000);
+    // Use our safe storage wrapper
+    safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
     
     return {
       success: true,
@@ -105,13 +127,33 @@ export async function generateSpeech(session_id: string, text: string): Promise<
 // Function to check job status
 export async function checkJobStatus(job_id: string): Promise<JobStatusResponse> {
   try {
-    // Get job data from localStorage
-    const jobDataString = localStorage.getItem(`job_${job_id}`);
+    // Get job data from storage
+    const jobDataString = safeStorage.getItem(`job_${job_id}`);
     if (!jobDataString) {
       throw new Error('Job not found');
     }
     
     const jobData = JSON.parse(jobDataString);
+    
+    // Update job status (simulate processing)
+    if (jobData.status === 'pending') {
+      jobData.status = 'training';
+      jobData.progress = 30;
+      jobData.message = 'Training voice model...';
+      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
+    } else if (jobData.status === 'training') {
+      jobData.status = 'generating';
+      jobData.progress = 70;
+      jobData.message = 'Generating speech...';
+      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
+    } else if (jobData.status === 'generating') {
+      jobData.status = 'completed';
+      jobData.progress = 100;
+      jobData.message = 'Speech generation completed';
+      jobData.audio_url = 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
+      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
+    }
+    
     return {
       status: jobData.status,
       progress: jobData.progress,
@@ -130,16 +172,18 @@ export async function checkJobStatus(job_id: string): Promise<JobStatusResponse>
 // Function to get the generated audio URL
 export function getAudioUrl(job_id: string): string {
   try {
-    const jobDataString = localStorage.getItem(`job_${job_id}`);
+    const jobDataString = safeStorage.getItem(`job_${job_id}`);
     if (!jobDataString) {
-      throw new Error('Job not found');
+      // Return a default sample URL if job not found
+      return 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
     }
     
     const jobData = JSON.parse(jobDataString);
-    return jobData.audio_url || '';
+    return jobData.audio_url || 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
   } catch (error) {
     console.error('Error getting audio URL:', error);
-    return '';
+    // Return a default sample URL if there's an error
+    return 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
   }
 }
 

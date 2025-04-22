@@ -74,6 +74,13 @@ export default function VoiceUploader() {
       toast.error(`Please upload or record at least one voice sample before continuing`);
       return;
     }
+    
+    if (samples.length < maxSamples) {
+      const confirmed = window.confirm(`For best voice cloning results, we recommend ${maxSamples} samples. You currently have ${samples.length}. Continue anyway?`);
+      if (!confirmed) {
+        return;
+      }
+    }
 
     try {
       setIsUploading(true);
