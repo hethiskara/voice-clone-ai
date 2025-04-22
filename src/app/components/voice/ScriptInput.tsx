@@ -15,30 +15,29 @@ export default function ScriptInput() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session');
 
-  const handleGenerateVoice = async () => {
-    if (!script.trim()) {
-      toast.error('Please enter some text to generate speech');
+  const handleSubmit = async () => {
+    if (!sessionId) {
+      toast.error('No voice samples found. Please upload voice samples first.');
+      router.push('/create');
       return;
     }
 
-    if (!sessionId) {
-      toast.error('Session ID not found. Please start over.');
-      router.push('/create');
+    if (!script.trim()) {
+      toast.error('Please enter some text to convert to speech');
       return;
     }
 
     try {
       setIsGenerating(true);
-      const response = await generateSpeech(sessionId, script);
       
-      if (response.success && response.job_id) {
-        router.push(`/create/processing?job_id=${response.job_id}`);
-      } else {
-        toast.error('Failed to generate speech. Please try again.');
-      }
+      // Generate speech with the provided text and session ID
+      const job_id = await generateSpeech(script.trim(), sessionId);
+      
+      // Redirect to the processing page with the job ID
+      router.push(`/create/processing?job_id=${job_id}`);
     } catch (error) {
-      console.error('Speech generation error:', error);
-      toast.error('Failed to generate speech. Please try again.');
+      console.error('Generation error:', error);
+      toast.error('Failed to start voice generation. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -72,7 +71,7 @@ export default function ScriptInput() {
 
       <div className="flex justify-center">
         <button
-          onClick={handleGenerateVoice}
+          onClick={handleSubmit}
           disabled={!script.trim() || isGenerating}
           className={`bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg
             ${!script.trim() || isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
