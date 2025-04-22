@@ -40,6 +40,20 @@ STATUS_DIR = Path("status")
 for dir_path in [UPLOAD_DIR, OUTPUT_DIR, MODELS_DIR, STATUS_DIR]:
     dir_path.mkdir(exist_ok=True)
 
+# Initialize TTS model lazily to save memory
+tts = None
+
+def get_tts():
+    global tts
+    if tts is None:
+        try:
+            # Load TTS model only when needed
+            tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+        except Exception as e:
+            logger.error(f"Failed to load TTS model: {e}")
+            raise
+    return tts
+
 class TextInput(BaseModel):
     text: str
 
@@ -164,13 +178,15 @@ async def upload_samples(files: List[UploadFile]):
         )
 
 async def process_voice_clone(job_id: str, session_id: str, text: str):
+    """Process voice cloning in the background."""
     try:
-        logger.info(f"Starting voice cloning for job {job_id}")
+        logger.info(f"Starting voice cloning for job {job_id} with session {session_id}")
+        
+        # Update status
         await save_job_status(job_id, "training", 0, "Initializing TTS model...")
 
-        # Initialize TTS with the YourTTS model
-        tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts", 
-                  progress_bar=False, gpu=False)  # Set gpu=False for CPU usage
+        # Get the TTS model using the lazy-loading function
+        tts = get_tts()
 
         # Get the path to the voice samples
         session_dir = UPLOAD_DIR / session_id
@@ -199,22 +215,16 @@ async def process_voice_clone(job_id: str, session_id: str, text: str):
         )
 
         if not output_path.exists():
-            logger.error(f"Failed to generate audio file at {output_path}")
-            raise Exception("Failed to generate audio file")
+            logger.error("Output file was not created")
+            raise Exception("Failed to generate speech")
 
-        # Verify file size
-        file_size = output_path.stat().st_size
-        if file_size == 0:
-            logger.error(f"Generated audio file is empty: {output_path}")
-            raise Exception("Generated audio file is empty")
-
-        logger.info(f"Successfully generated audio file at {output_path} ({file_size} bytes)")
-        await save_job_status(job_id, "completed", 100, "Voice generation complete!")
-
+        # Update status
+        await save_job_status(job_id, "completed", 100, "Speech generation completed")
+        logger.info(f"Voice cloning completed for job {job_id}")
+        
     except Exception as e:
-        logger.error(f"Error in voice cloning: {str(e)}")
+        logger.error(f"Error in voice cloning: {e}")
         await save_job_status(job_id, "error", 0, str(e))
-        raise e
 
 @app.post("/api/generate-speech/{session_id}")
 async def generate_speech(session_id: str, text_input: TextInput, background_tasks: BackgroundTasks):
