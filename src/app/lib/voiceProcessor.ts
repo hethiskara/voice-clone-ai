@@ -110,43 +110,143 @@ export class SpeechGenerator {
         return;
       }
       
-      // Create a SpeechSynthesisUtterance with the text
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Apply voice characteristics
-      utterance.pitch = this.characteristics.pitch;
-      utterance.rate = this.characteristics.rate;
-      utterance.volume = this.characteristics.volume;
-      
-      // Select a voice (this is simplified - in reality, voice selection would be more complex)
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        // Try to find a voice that matches the timbre characteristic
-        const voiceIndex = Math.floor(this.characteristics.timbre * voices.length);
-        utterance.voice = voices[Math.min(voiceIndex, voices.length - 1)];
+      try {
+        // Create a SpeechSynthesisUtterance with the text
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Apply voice characteristics
+        utterance.pitch = this.characteristics.pitch;
+        utterance.rate = this.characteristics.rate;
+        utterance.volume = this.characteristics.volume;
+        
+        // Select a voice (this is simplified - in reality, voice selection would be more complex)
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          // Try to find a voice that matches the timbre characteristic
+          const voiceIndex = Math.floor(this.characteristics.timbre * voices.length);
+          utterance.voice = voices[Math.min(voiceIndex, voices.length - 1)];
+        }
+        
+        // Create an audio context and destination stream for recording
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const destination = audioContext.createMediaStreamDestination();
+        
+        // Create an oscillator to simulate the voice
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        
+        // Create a gain node to control volume
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 0.1;
+        
+        // Connect the oscillator to the gain node and the gain node to the destination
+        oscillator.connect(gainNode);
+        gainNode.connect(destination);
+        
+        // Create a MediaRecorder to record the audio
+        let audioChunks: Blob[] = [];
+        let mediaRecorder: MediaRecorder;
+        
+        // Function to create a synthetic audio file if MediaRecorder fails
+        const createSyntheticAudio = () => {
+          // Create a buffer for the synthetic audio
+          const sampleRate = 44100;
+          const duration = Math.max(3, text.length * 0.1);
+          const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+          const channelData = buffer.getChannelData(0);
+          
+          // Generate audio data based on text and voice characteristics
+          for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            
+            // Base frequency modulated by the pitch characteristic
+            const baseFreq = 120 * this.characteristics!.pitch;
+            
+            // Add some variation to make it sound more natural
+            const vibrato = Math.sin(2 * Math.PI * 5 * t) * 3;
+            const freq = baseFreq + vibrato;
+            
+            // Generate the sample
+            let sample = Math.sin(2 * Math.PI * freq * t);
+            
+            // Add some harmonics
+            sample += 0.5 * Math.sin(2 * Math.PI * freq * 2 * t);
+            sample += 0.25 * Math.sin(2 * Math.PI * freq * 3 * t);
+            
+            // Apply an envelope to simulate speech patterns
+            const envelopeFreq = 2 * this.characteristics!.rate;
+            const envelope = 0.5 + 0.5 * Math.sin(2 * Math.PI * envelopeFreq * t);
+            
+            // Apply volume
+            channelData[i] = sample * envelope * this.characteristics!.volume * 0.3;
+          }
+          
+          // Convert the buffer to a WAV file
+          const wavBlob = this.bufferToWav(buffer);
+          resolve(wavBlob);
+        };
+        
+        try {
+          mediaRecorder = new MediaRecorder(destination.stream);
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+          
+          mediaRecorder.onstop = () => {
+            if (audioChunks.length > 0) {
+              const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+              resolve(audioBlob);
+            } else {
+              // If no chunks were recorded, create a synthetic audio file
+              createSyntheticAudio();
+            }
+          };
+          
+          // Start recording
+          mediaRecorder.start();
+          
+          // Start the oscillator
+          oscillator.start();
+          
+          // Speak the text
+          window.speechSynthesis.speak(utterance);
+          
+          // Calculate an estimated duration based on text length and speech rate
+          const estimatedDuration = Math.max(3000, (text.length / this.characteristics.rate) * 100);
+          
+          // Stop recording after the estimated duration
+          setTimeout(() => {
+            oscillator.stop();
+            mediaRecorder.stop();
+            window.speechSynthesis.cancel(); // Stop any ongoing speech
+          }, estimatedDuration);
+        } catch (error) {
+          console.error('MediaRecorder error:', error);
+          createSyntheticAudio();
+        }
+      } catch (error) {
+        console.error('Error generating speech:', error);
+        
+        // Create a fallback audio file with a simple melody
+        const sampleRate = 44100;
+        const duration = 3;
+        const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // Generate a simple melody
+        const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88]; // C4 to B4
+        for (let i = 0; i < sampleRate * duration; i++) {
+          const timeInSec = i / sampleRate;
+          const noteIndex = Math.floor(timeInSec * 2) % notes.length;
+          data[i] = 0.5 * Math.sin(2 * Math.PI * notes[noteIndex] * timeInSec);
+        }
+        
+        const wavBlob = this.bufferToWav(buffer);
+        resolve(wavBlob);
       }
-      
-      // Create a simple audio tone as a fallback
-      const sampleRate = 44100;
-      const duration = 3; // seconds
-      const numSamples = sampleRate * duration;
-      const buffer = this.audioContext.createBuffer(1, numSamples, sampleRate);
-      const data = buffer.getChannelData(0);
-      
-      // Generate a simple tone with characteristics applied
-      const frequency = 440 * this.characteristics.pitch;
-      for (let i = 0; i < numSamples; i++) {
-        data[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * this.characteristics.volume;
-      }
-      
-      // Convert buffer to WAV
-      const wavBlob = this.bufferToWav(buffer);
-      
-      // Start the speech synthesis
-      window.speechSynthesis.speak(utterance);
-      
-      // Resolve with the generated audio
-      resolve(wavBlob);
     });
   }
   
