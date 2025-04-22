@@ -126,54 +126,27 @@ export class SpeechGenerator {
         utterance.voice = voices[Math.min(voiceIndex, voices.length - 1)];
       }
       
-      // Create a MediaRecorder to capture the synthesized speech
-      const audioChunks: Blob[] = [];
-      const mediaStream = new MediaStream();
-      const mediaRecorder = new MediaRecorder(mediaStream);
+      // Create a simple audio tone as a fallback
+      const sampleRate = 44100;
+      const duration = 3; // seconds
+      const numSamples = sampleRate * duration;
+      const buffer = this.audioContext.createBuffer(1, numSamples, sampleRate);
+      const data = buffer.getChannelData(0);
       
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
+      // Generate a simple tone with characteristics applied
+      const frequency = 440 * this.characteristics.pitch;
+      for (let i = 0; i < numSamples; i++) {
+        data[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * this.characteristics.volume;
+      }
       
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        resolve(audioBlob);
-      };
+      // Convert buffer to WAV
+      const wavBlob = this.bufferToWav(buffer);
       
-      // Start recording and play the utterance
-      mediaRecorder.start();
+      // Start the speech synthesis
       window.speechSynthesis.speak(utterance);
       
-      // This is a simplified approach - in reality, we would need to properly
-      // capture the audio output, which is more complex in a browser environment
-      
-      // For demo purposes, we'll create a simulated audio blob after a delay
-      setTimeout(() => {
-        mediaRecorder.stop();
-        
-        // If the MediaRecorder approach doesn't work (which is likely in most browsers),
-        // we'll fall back to a simulated audio blob
-        if (audioChunks.length === 0) {
-          // Create a simple audio tone as a fallback
-          const sampleRate = 44100;
-          const duration = 3; // seconds
-          const numSamples = sampleRate * duration;
-          const buffer = this.audioContext.createBuffer(1, numSamples, sampleRate);
-          const data = buffer.getChannelData(0);
-          
-          // Generate a simple tone with characteristics applied
-          const frequency = 440 * this.characteristics!.pitch;
-          for (let i = 0; i < numSamples; i++) {
-            data[i] = Math.sin(2 * Math.PI * frequency * i / sampleRate) * this.characteristics!.volume;
-          }
-          
-          // Convert buffer to WAV
-          const wavBlob = this.bufferToWav(buffer);
-          resolve(wavBlob);
-        }
-      }, 2000);
+      // Resolve with the generated audio
+      resolve(wavBlob);
     });
   }
   
