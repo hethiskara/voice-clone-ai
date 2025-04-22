@@ -70,16 +70,9 @@ export default function VoiceUploader() {
   };
 
   const handleContinue = async () => {
-    if (samples.length < 1) {
-      toast.error(`Please upload or record at least one voice sample before continuing`);
-      return;
-    }
-    
     if (samples.length < maxSamples) {
-      const confirmed = window.confirm(`For best voice cloning results, we recommend ${maxSamples} samples. You currently have ${samples.length}. Continue anyway?`);
-      if (!confirmed) {
-        return;
-      }
+      toast.error(`Please upload or record all ${maxSamples} voice samples before continuing. You currently have ${samples.length}.`);
+      return;
     }
 
     try {
@@ -198,7 +191,7 @@ export default function VoiceUploader() {
             onClick={handleContinue}
             disabled={isUploading}
             className={`bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg
-              ${samples.length < 1 || isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
+              ${samples.length < maxSamples || isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
           >
             {isUploading 
               ? 'Uploading...' 
