@@ -1,0 +1,43 @@
+# Ignore unnecessary files for Docker build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ignore local development files
+.env
+.venv
+venv/
+ENV/
+
+# Ignore version control files
+.git
+.gitignore
+
+# Ignore large data files
+uploads/
+outputs/
+models/
+status/
+
+# Ignore editor files
+.idea/
+.vscode/
+*.swp
+*.swo
