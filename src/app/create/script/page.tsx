@@ -44,30 +44,30 @@ function ScriptContent() {
     validateSession();
   }, [sessionId, router]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!sessionId) {
-      toast.error('No voice samples found. Please upload voice samples first.');
-      router.push('/create');
+      toast.error('No session ID found. Please upload voice samples first.');
       return;
     }
-
+    
     if (!script.trim()) {
-      toast.error('Please enter some text to convert to speech');
+      toast.error('Please enter some text to generate speech.');
       return;
     }
-
+    
     try {
       setIsGenerating(true);
-      const response = await generateSpeech(sessionId, script.trim());
       
-      if (response.success && response.job_id) {
-        router.push(`/create/processing?job_id=${response.job_id}`);
-      } else {
-        toast.error('Failed to generate speech. Please try again.');
-      }
+      // Generate speech with the provided text and session ID
+      const response = await generateSpeech(script, sessionId);
+      
+      // Redirect to the processing page with the job ID
+      router.push(`/create/processing?job_id=${response}`);
     } catch (error) {
-      console.error('Generation error:', error);
-      toast.error('Failed to start voice generation. Please try again.');
+      console.error('Error generating speech:', error);
+      toast.error('Failed to generate speech. Please try again.');
     } finally {
       setIsGenerating(false);
     }
