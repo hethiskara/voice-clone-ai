@@ -1,8 +1,5 @@
 import axios from 'axios';
-
-// Replace with your ElevenLabs API key
-const ELEVENLABS_API_KEY = 'YOUR_ELEVENLABS_API_KEY';
-const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
+import { VoiceCloner } from './voiceProcessor';
 
 // For local development and testing
 const LOCAL_API_BASE_URL = 'http://10.0.0.42:8000/api';
@@ -55,14 +52,28 @@ const safeStorage = {
   }
 };
 
-// Function to upload voice samples to ElevenLabs
+// Voice cloner instance (created on demand)
+let voiceCloner: VoiceCloner | null = null;
+
+// Function to get or create the voice cloner
+function getVoiceCloner(): VoiceCloner {
+  if (!voiceCloner) {
+    voiceCloner = new VoiceCloner();
+  }
+  return voiceCloner;
+}
+
+// Function to upload voice samples
 export async function uploadVoiceSamples(files: File[]): Promise<UploadResponse> {
   try {
     // Create a unique session ID
     const session_id = `session_${Date.now()}`;
     
     // Store files in localStorage for demo purposes
-    // In a real app, you might want to use IndexedDB for larger files
+    // Convert Files to Blobs for storage
+    const fileBlobs = files.map(file => new Blob([file], { type: file.type }));
+    
+    // Store file data URLs for later use
     const filePromises = files.map(file => 
       new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -73,8 +84,6 @@ export async function uploadVoiceSamples(files: File[]): Promise<UploadResponse>
     );
     
     const fileDataUrls = await Promise.all(filePromises);
-    
-    // Use our safe storage wrapper
     safeStorage.setItem(`voice_samples_${session_id}`, JSON.stringify(fileDataUrls));
     
     return {
@@ -107,24 +116,27 @@ export async function checkSessionSamples(session_id: string): Promise<boolean> 
   }
 }
 
-// Function to create a voice clone with ElevenLabs
+// Function to create a voice clone and generate speech
 export async function generateSpeech(session_id: string, text: string): Promise<GenerateSpeechResponse> {
   try {
-    // For demo purposes, we'll just create a job ID
-    // In a real implementation, you would call ElevenLabs API to create a voice
+    // Create a unique job ID
     const job_id = `job_${Date.now()}`;
     
-    // Store the job information
+    // Initialize job status
     const jobData = {
       session_id,
       text,
       status: 'pending',
       progress: 0,
-      message: 'Job created, waiting to start processing...'
+      message: 'Job created, waiting to start processing...',
+      audio_url: ''
     };
     
-    // Use our safe storage wrapper
+    // Store initial job data
     safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
+    
+    // Start processing in the background
+    processVoiceCloning(job_id, session_id, text);
     
     return {
       success: true,
@@ -140,6 +152,82 @@ export async function generateSpeech(session_id: string, text: string): Promise<
   }
 }
 
+// Background processing function for voice cloning
+async function processVoiceCloning(job_id: string, session_id: string, text: string): Promise<void> {
+  try {
+    // Update job status to training
+    updateJobStatus(job_id, 'training', 10, 'Loading voice samples...');
+    
+    // Get voice samples from storage
+    const samplesDataString = safeStorage.getItem(`voice_samples_${session_id}`);
+    if (!samplesDataString) {
+      throw new Error('Voice samples not found');
+    }
+    
+    const samplesDataUrls = JSON.parse(samplesDataString);
+    
+    // Convert data URLs back to Blobs
+    const sampleBlobs = await Promise.all(
+      samplesDataUrls.map(async (dataUrl: string) => {
+        const response = await fetch(dataUrl);
+        return response.blob();
+      })
+    );
+    
+    // Update job status to processing
+    updateJobStatus(job_id, 'training', 30, 'Analyzing voice characteristics...');
+    
+    // Process voice samples
+    const cloner = getVoiceCloner();
+    await cloner.processVoiceSamples(sampleBlobs);
+    
+    // Update job status to generating
+    updateJobStatus(job_id, 'generating', 60, 'Generating speech with your voice...');
+    
+    // Generate speech with the cloned voice
+    const audioBlob = await cloner.generateSpeech(text);
+    
+    // Create a URL for the audio blob
+    const audioUrl = VoiceCloner.createAudioUrl(audioBlob);
+    
+    // Update job status to completed
+    updateJobStatus(job_id, 'completed', 100, 'Speech generation completed', audioUrl);
+    
+  } catch (error) {
+    console.error('Error in voice cloning process:', error);
+    updateJobStatus(job_id, 'error', 0, `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Helper function to update job status
+function updateJobStatus(
+  job_id: string, 
+  status: JobStatusResponse['status'], 
+  progress: number, 
+  message: string,
+  audio_url: string = ''
+): void {
+  try {
+    const jobDataString = safeStorage.getItem(`job_${job_id}`);
+    if (!jobDataString) {
+      return;
+    }
+    
+    const jobData = JSON.parse(jobDataString);
+    jobData.status = status;
+    jobData.progress = progress;
+    jobData.message = message;
+    
+    if (audio_url) {
+      jobData.audio_url = audio_url;
+    }
+    
+    safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
+  } catch (error) {
+    console.error('Error updating job status:', error);
+  }
+}
+
 // Function to check job status
 export async function checkJobStatus(job_id: string): Promise<JobStatusResponse> {
   try {
@@ -150,25 +238,6 @@ export async function checkJobStatus(job_id: string): Promise<JobStatusResponse>
     }
     
     const jobData = JSON.parse(jobDataString);
-    
-    // Update job status (simulate processing)
-    if (jobData.status === 'pending') {
-      jobData.status = 'training';
-      jobData.progress = 30;
-      jobData.message = 'Training voice model...';
-      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
-    } else if (jobData.status === 'training') {
-      jobData.status = 'generating';
-      jobData.progress = 70;
-      jobData.message = 'Generating speech...';
-      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
-    } else if (jobData.status === 'generating') {
-      jobData.status = 'completed';
-      jobData.progress = 100;
-      jobData.message = 'Speech generation completed';
-      jobData.audio_url = 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
-      safeStorage.setItem(`job_${job_id}`, JSON.stringify(jobData));
-    }
     
     return {
       status: jobData.status,
@@ -190,65 +259,13 @@ export function getAudioUrl(job_id: string): string {
   try {
     const jobDataString = safeStorage.getItem(`job_${job_id}`);
     if (!jobDataString) {
-      // Return a default sample URL if job not found
-      return 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
+      return '';
     }
     
     const jobData = JSON.parse(jobDataString);
-    return jobData.audio_url || 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
+    return jobData.audio_url || '';
   } catch (error) {
     console.error('Error getting audio URL:', error);
-    // Return a default sample URL if there's an error
-    return 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
+    return '';
   }
 }
-
-// ElevenLabs API integration (commented out until you get an API key)
-/*
-// Create a voice clone with ElevenLabs
-export async function createVoiceClone(name: string, files: File[]): Promise<any> {
-  const formData = new FormData();
-  formData.append('name', name);
-  
-  files.forEach((file, index) => {
-    formData.append(`files`, file);
-  });
-  
-  const response = await axios.post(
-    `${ELEVENLABS_API_URL}/voices/add`,
-    formData,
-    {
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'multipart/form-data'
-      }
-    }
-  );
-  
-  return response.data;
-}
-
-// Generate speech with the cloned voice
-export async function generateSpeechWithElevenLabs(voiceId: string, text: string): Promise<any> {
-  const response = await axios.post(
-    `${ELEVENLABS_API_URL}/text-to-speech/${voiceId}`,
-    {
-      text,
-      model_id: 'eleven_monolingual_v1',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.5
-      }
-    },
-    {
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      responseType: 'blob'
-    }
-  );
-  
-  return response.data;
-}
-*/

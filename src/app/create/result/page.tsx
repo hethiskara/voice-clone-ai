@@ -9,21 +9,65 @@ function ResultContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get('job_id');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (jobId) {
-      // Use a real sample audio file for demonstration
-      const url = 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
-      setAudioUrl(url);
+    if (!jobId) {
+      setError('No job ID found');
+      setIsLoading(false);
+      return;
     }
+
+    // Get the audio URL for the job
+    const fetchAudioUrl = async () => {
+      try {
+        setIsLoading(true);
+        const url = getAudioUrl(jobId);
+        
+        if (!url) {
+          setError('Audio file not found');
+        } else {
+          setAudioUrl(url);
+        }
+      } catch (error) {
+        console.error('Error getting audio URL:', error);
+        setError('Failed to get audio file');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAudioUrl();
   }, [jobId]);
 
-  if (!jobId) {
+  if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-white to-purple-50 flex items-center justify-center">
         <div className="text-center p-8">
           <h1 className="text-3xl font-bold text-red-600">Error</h1>
-          <p className="text-gray-600 mt-4">No job ID was found.</p>
+          <p className="text-gray-600 mt-4">{error}</p>
+          <button
+            onClick={() => window.location.href = '/create'}
+            className="mt-6 bg-purple-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-purple-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-purple-800 mb-4">Loading your voice message...</h2>
+          <div className="flex justify-center space-x-2">
+            <div className="w-3 h-3 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+            <div className="w-3 h-3 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-3 h-3 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+          </div>
         </div>
       </div>
     );
