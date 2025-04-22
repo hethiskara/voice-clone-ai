@@ -3,14 +3,14 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { getJobStatus } from '@/app/lib/api';
-import { JobStatus } from '@/app/lib/api';
+import { checkJobStatus } from '@/app/lib/api';
+import type { JobStatusResponse } from '@/app/lib/api';
 
 // Create a client component that uses useSearchParams
 function ProcessingContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get('job_id');
-  const [status, setStatus] = useState<JobStatus | null>(null);
+  const [status, setStatus] = useState<JobStatusResponse | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,12 +22,12 @@ function ProcessingContent() {
 
     const checkStatus = async () => {
       try {
-        const jobStatus = await getJobStatus(jobId);
+        const jobStatus = await checkJobStatus(jobId);
         setStatus(jobStatus);
         setProgress(jobStatus.progress);
 
         if (jobStatus.status === 'completed') {
-          window.location.href = `/create/result?audio=/api/audio/${jobId}`;
+          window.location.href = `/create/result?job_id=${jobId}`;
         } else if (jobStatus.status === 'error') {
           setError(jobStatus.message || 'An error occurred');
         }

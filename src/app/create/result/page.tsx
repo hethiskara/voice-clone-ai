@@ -2,11 +2,33 @@
 
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { getAudioUrl } from '@/app/lib/api';
 
 function ResultContent() {
   const searchParams = useSearchParams();
-  const audioUrl = searchParams.get('audio');
+  const jobId = searchParams.get('job_id');
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (jobId) {
+      // For demo purposes, we'll use a sample audio file
+      // In a real implementation, this would come from ElevenLabs
+      const url = getAudioUrl(jobId) || 'https://www2.cs.uic.edu/~i101/SoundFiles/CantinaBand3.wav';
+      setAudioUrl(url);
+    }
+  }, [jobId]);
+
+  if (!jobId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-purple-50 flex items-center justify-center">
+        <div className="text-center p-8">
+          <h1 className="text-3xl font-bold text-red-600">Error</h1>
+          <p className="text-gray-600 mt-4">No job ID was found.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!audioUrl) {
     return (
@@ -38,29 +60,26 @@ function ResultContent() {
               </svg>
             </div>
             <p className="text-gray-700 mb-2">Your voice has been successfully cloned!</p>
-            <p className="text-sm text-gray-500">Download the MP3 file to listen to your message</p>
+            <p className="text-sm text-gray-500">Listen to your message below</p>
           </div>
           
-          <div className="flex justify-center">
+          <div className="flex justify-center mb-6">
             <div className="w-1 h-8 mx-1 bg-purple-600 rounded-full" />
             <div className="w-1 h-8 mx-1 bg-purple-600 rounded-full" />
             <div className="w-1 h-8 mx-1 bg-purple-600 rounded-full" />
             <div className="w-1 h-8 mx-1 bg-pink-600 rounded-full" />
             <div className="w-1 h-8 mx-1 bg-pink-600 rounded-full" />
+          </div>
+          
+          <div className="mt-4">
+            <audio controls className="w-full">
+              <source src={audioUrl} type="audio/wav" />
+              Your browser does not support the audio element.
+            </audio>
           </div>
         </div>
 
         <div className="flex justify-center space-x-4">
-          <a
-            href={audioUrl}
-            download="voice-message.mp3"
-            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:scale-105 transition-transform flex items-center"
-          >
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
-            </svg>
-            Download MP3
-          </a>
           <button
             onClick={() => window.location.href = '/create'}
             className="bg-gray-100 text-gray-700 font-semibold py-3 px-8 rounded-lg shadow-lg hover:bg-gray-200 transition-colors"
