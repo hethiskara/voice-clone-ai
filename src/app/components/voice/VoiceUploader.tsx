@@ -70,17 +70,22 @@ export default function VoiceUploader() {
   };
 
   const handleContinue = async () => {
-    if (samples.length !== maxSamples) {
-      toast.error(`Please upload or record all ${maxSamples} voice samples before continuing`);
+    if (samples.length < 1) {
+      toast.error(`Please upload or record at least one voice sample before continuing`);
       return;
     }
 
     try {
       setIsUploading(true);
       console.log('Uploading samples:', samples);
-      const sessionId = await uploadVoiceSamples(samples.map(s => s.file));
-      console.log('Upload successful, session ID:', sessionId);
-      router.push(`/create/script?session=${sessionId}`);
+      const response = await uploadVoiceSamples(samples.map(s => s.file));
+      console.log('Upload successful, session ID:', response.session_id);
+      
+      if (response.success && response.session_id) {
+        router.push(`/create/script?session=${response.session_id}`);
+      } else {
+        toast.error('Failed to process voice samples. Please try again.');
+      }
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload voice samples. Please try again.');
@@ -186,7 +191,7 @@ export default function VoiceUploader() {
             onClick={handleContinue}
             disabled={isUploading}
             className={`bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg
-              ${samples.length < maxSamples || isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
+              ${samples.length < 1 || isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
           >
             {isUploading 
               ? 'Uploading...' 
