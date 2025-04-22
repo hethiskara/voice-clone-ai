@@ -91,6 +91,22 @@ export async function uploadVoiceSamples(files: File[]): Promise<UploadResponse>
   }
 }
 
+// Function to check if a session has enough samples (20)
+export async function checkSessionSamples(session_id: string): Promise<boolean> {
+  try {
+    const samplesDataString = safeStorage.getItem(`voice_samples_${session_id}`);
+    if (!samplesDataString) {
+      return false;
+    }
+    
+    const samplesData = JSON.parse(samplesDataString);
+    return Array.isArray(samplesData) && samplesData.length >= 20;
+  } catch (error) {
+    console.error('Error checking session samples:', error);
+    return false;
+  }
+}
+
 // Function to create a voice clone with ElevenLabs
 export async function generateSpeech(session_id: string, text: string): Promise<GenerateSpeechResponse> {
   try {
