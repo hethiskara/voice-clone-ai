@@ -1,90 +1,141 @@
-/**
- * Frontend Voice Processing Library
- * 
- * This library simulates voice cloning in the browser using Web Audio API.
- * It's a simplified demonstration and doesn't perform actual ML-based voice cloning.
- */
+// Voice processing utilities for frontend-only voice cloning
 
-// Voice characteristics that we'll extract and apply
-interface VoiceCharacteristics {
-  pitch: number;      // Base pitch of the voice
-  rate: number;       // Speaking rate
-  volume: number;     // Voice volume
-  timbre: number;     // Voice timbre (simplified as a single value)
+// Interface for voice characteristics
+export interface VoiceCharacteristics {
+  pitch: number;   // Voice pitch (0.5 to 2.0)
+  rate: number;    // Speech rate (0.5 to 2.0)
+  volume: number;  // Volume (0 to 1.0)
+  timbre: number;  // Voice timbre/quality (0 to 1.0)
 }
 
-// Class to handle voice sample analysis
+// Class to analyze voice samples and extract characteristics
 export class VoiceAnalyzer {
   private audioContext: AudioContext;
-  private analyzer: AnalyserNode;
   
   constructor() {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    this.analyzer = this.audioContext.createAnalyser();
-    this.analyzer.fftSize = 2048;
   }
   
-  // Analyze voice samples to extract basic characteristics
-  async analyzeVoiceSamples(audioBlobs: Blob[]): Promise<VoiceCharacteristics> {
-    // In a real implementation, we would perform actual audio analysis
-    // For this demo, we'll extract some basic characteristics from the first sample
-    
-    if (audioBlobs.length === 0) {
-      throw new Error('No voice samples provided');
-    }
-    
+  // Analyze a voice sample to extract characteristics
+  async analyzeVoiceSample(audioBlob: Blob): Promise<VoiceCharacteristics> {
     try {
-      // Process the first audio blob
-      const arrayBuffer = await audioBlobs[0].arrayBuffer();
+      // Convert blob to array buffer
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      // Decode the audio data
       const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
       
-      // Extract basic characteristics
-      const characteristics = this.extractCharacteristics(audioBuffer);
+      // Extract characteristics
+      const pitch = this.extractPitch(audioBuffer);
+      const rate = this.extractRate(audioBuffer);
+      const volume = this.extractVolume(audioBuffer);
+      const timbre = this.extractTimbre(audioBuffer);
       
-      // If we have multiple samples, refine the characteristics
-      if (audioBlobs.length > 1) {
-        // In a real implementation, we would analyze all samples and average/refine
-        // For demo purposes, we'll just slightly adjust based on number of samples
-        characteristics.timbre += (audioBlobs.length - 1) * 0.05;
-      }
-      
-      return characteristics;
+      return { pitch, rate, volume, timbre };
     } catch (error) {
-      console.error('Error analyzing voice samples:', error);
+      console.error('Error analyzing voice sample:', error);
       // Return default characteristics if analysis fails
-      return {
-        pitch: 1.0,
-        rate: 1.0,
-        volume: 1.0,
-        timbre: 0.5
-      };
+      return { pitch: 1.0, rate: 1.0, volume: 1.0, timbre: 0.5 };
     }
   }
   
-  private extractCharacteristics(audioBuffer: AudioBuffer): VoiceCharacteristics {
-    // In a real implementation, we would perform actual audio analysis
-    // For this demo, we'll use simplified calculations
+  // Extract pitch from audio buffer (simplified)
+  private extractPitch(audioBuffer: AudioBuffer): number {
+    // In a real implementation, this would use a pitch detection algorithm
+    // For this demo, we'll use a simplified approach based on frequency analysis
     
+    // Get audio data
     const data = audioBuffer.getChannelData(0);
-    let sum = 0;
-    let max = 0;
     
-    // Calculate simple metrics
-    for (let i = 0; i < data.length; i++) {
-      sum += Math.abs(data[i]);
-      max = Math.max(max, Math.abs(data[i]));
+    // Calculate zero-crossings as a simple pitch estimation
+    let zeroCrossings = 0;
+    for (let i = 1; i < data.length; i++) {
+      if ((data[i] >= 0 && data[i - 1] < 0) || (data[i] < 0 && data[i - 1] >= 0)) {
+        zeroCrossings++;
+      }
     }
     
-    const average = sum / data.length;
+    // Convert to a normalized pitch value between 0.5 and 2.0
+    // More zero crossings generally means higher pitch
+    const normalizedPitch = Math.max(0.5, Math.min(2.0, 
+      0.5 + (zeroCrossings / data.length) * 100
+    ));
     
-    // Create simplified characteristics
-    // These are not scientifically accurate but provide a demo effect
-    return {
-      pitch: 0.8 + (max * 0.4),           // Range ~0.8-1.2
-      rate: 0.9 + (average * 2),          // Range ~0.9-1.1
-      volume: 0.7 + (max * 0.6),          // Range ~0.7-1.3
-      timbre: 0.3 + (average * 1.4)       // Range ~0.3-0.7
-    };
+    return normalizedPitch;
+  }
+  
+  // Extract speech rate from audio buffer (simplified)
+  private extractRate(audioBuffer: AudioBuffer): number {
+    // In a real implementation, this would analyze speech patterns
+    // For this demo, we'll use a simplified approach
+    
+    // Get audio data
+    const data = audioBuffer.getChannelData(0);
+    
+    // Calculate energy variations as a proxy for speech rate
+    let energyVariations = 0;
+    const windowSize = 1024;
+    
+    for (let i = 0; i < data.length - windowSize; i += windowSize) {
+      let energy1 = 0;
+      let energy2 = 0;
+      
+      for (let j = 0; j < windowSize / 2; j++) {
+        energy1 += Math.abs(data[i + j]);
+        energy2 += Math.abs(data[i + windowSize / 2 + j]);
+      }
+      
+      if (Math.abs(energy1 - energy2) > 0.01) {
+        energyVariations++;
+      }
+    }
+    
+    // Convert to a normalized rate value between 0.5 and 2.0
+    const normalizedRate = Math.max(0.5, Math.min(2.0, 
+      0.5 + (energyVariations / (data.length / windowSize)) * 5
+    ));
+    
+    return normalizedRate;
+  }
+  
+  // Extract volume from audio buffer
+  private extractVolume(audioBuffer: AudioBuffer): number {
+    // Get audio data
+    const data = audioBuffer.getChannelData(0);
+    
+    // Calculate RMS (root mean square) as volume
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      sum += data[i] * data[i];
+    }
+    
+    const rms = Math.sqrt(sum / data.length);
+    
+    // Normalize to a value between 0 and 1
+    return Math.min(1.0, rms * 10);
+  }
+  
+  // Extract timbre from audio buffer (simplified)
+  private extractTimbre(audioBuffer: AudioBuffer): number {
+    // In a real implementation, this would analyze spectral characteristics
+    // For this demo, we'll use a simplified approach
+    
+    // Get audio data
+    const data = audioBuffer.getChannelData(0);
+    
+    // Use a simple spectral centroid approximation
+    let weightedSum = 0;
+    let sum = 0;
+    
+    for (let i = 0; i < data.length; i++) {
+      weightedSum += Math.abs(data[i]) * i;
+      sum += Math.abs(data[i]);
+    }
+    
+    const spectralCentroid = sum > 0 ? weightedSum / sum : 0;
+    
+    // Normalize to a value between 0 and 1
+    return Math.min(1.0, spectralCentroid / (data.length / 2));
   }
 }
 
@@ -110,147 +161,113 @@ export class SpeechGenerator {
         return;
       }
       
-      try {
-        // Create a SpeechSynthesisUtterance with the text
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // Apply voice characteristics
-        utterance.pitch = this.characteristics.pitch;
-        utterance.rate = this.characteristics.rate;
-        utterance.volume = this.characteristics.volume;
-        
-        // Select a voice (this is simplified - in reality, voice selection would be more complex)
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          // Try to find a voice that matches the timbre characteristic
-          const voiceIndex = Math.floor(this.characteristics.timbre * voices.length);
-          utterance.voice = voices[Math.min(voiceIndex, voices.length - 1)];
-        }
-        
-        // Create an audio context and destination stream for recording
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const destination = audioContext.createMediaStreamDestination();
-        
-        // Create an oscillator to simulate the voice
-        const oscillator = audioContext.createOscillator();
-        oscillator.type = 'sine';
-        
-        // Create a gain node to control volume
-        const gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.1;
-        
-        // Connect the oscillator to the gain node and the gain node to the destination
-        oscillator.connect(gainNode);
-        gainNode.connect(destination);
-        
-        // Create a MediaRecorder to record the audio
-        let audioChunks: Blob[] = [];
-        let mediaRecorder: MediaRecorder;
-        
-        // Function to create a synthetic audio file if MediaRecorder fails
-        const createSyntheticAudio = () => {
-          // Create a buffer for the synthetic audio
-          const sampleRate = 44100;
-          const duration = Math.max(3, text.length * 0.1);
-          const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-          const channelData = buffer.getChannelData(0);
-          
-          // Generate audio data based on text and voice characteristics
-          for (let i = 0; i < buffer.length; i++) {
-            const t = i / sampleRate;
-            
-            // Base frequency modulated by the pitch characteristic
-            const baseFreq = 120 * this.characteristics!.pitch;
-            
-            // Add some variation to make it sound more natural
-            const vibrato = Math.sin(2 * Math.PI * 5 * t) * 3;
-            const freq = baseFreq + vibrato;
-            
-            // Generate the sample
-            let sample = Math.sin(2 * Math.PI * freq * t);
-            
-            // Add some harmonics
-            sample += 0.5 * Math.sin(2 * Math.PI * freq * 2 * t);
-            sample += 0.25 * Math.sin(2 * Math.PI * freq * 3 * t);
-            
-            // Apply an envelope to simulate speech patterns
-            const envelopeFreq = 2 * this.characteristics!.rate;
-            const envelope = 0.5 + 0.5 * Math.sin(2 * Math.PI * envelopeFreq * t);
-            
-            // Apply volume
-            channelData[i] = sample * envelope * this.characteristics!.volume * 0.3;
-          }
-          
-          // Convert the buffer to a WAV file
-          const wavBlob = this.bufferToWav(buffer);
-          resolve(wavBlob);
-        };
-        
-        try {
-          mediaRecorder = new MediaRecorder(destination.stream);
-          
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              audioChunks.push(event.data);
-            }
-          };
-          
-          mediaRecorder.onstop = () => {
-            if (audioChunks.length > 0) {
-              const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-              resolve(audioBlob);
-            } else {
-              // If no chunks were recorded, create a synthetic audio file
-              createSyntheticAudio();
-            }
-          };
-          
-          // Start recording
-          mediaRecorder.start();
-          
-          // Start the oscillator
-          oscillator.start();
-          
-          // Speak the text
-          window.speechSynthesis.speak(utterance);
-          
-          // Calculate an estimated duration based on text length and speech rate
-          const estimatedDuration = Math.max(3000, (text.length / this.characteristics.rate) * 100);
-          
-          // Stop recording after the estimated duration
-          setTimeout(() => {
-            oscillator.stop();
-            mediaRecorder.stop();
-            window.speechSynthesis.cancel(); // Stop any ongoing speech
-          }, estimatedDuration);
-        } catch (error) {
-          console.error('MediaRecorder error:', error);
-          createSyntheticAudio();
-        }
-      } catch (error) {
-        console.error('Error generating speech:', error);
-        
-        // Create a fallback audio file with a simple melody
-        const sampleRate = 44100;
-        const duration = 3;
-        const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-        const data = buffer.getChannelData(0);
-        
-        // Generate a simple melody
-        const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88]; // C4 to B4
-        for (let i = 0; i < sampleRate * duration; i++) {
-          const timeInSec = i / sampleRate;
-          const noteIndex = Math.floor(timeInSec * 2) % notes.length;
-          data[i] = 0.5 * Math.sin(2 * Math.PI * notes[noteIndex] * timeInSec);
-        }
-        
-        const wavBlob = this.bufferToWav(buffer);
-        resolve(wavBlob);
+      // Create a SpeechSynthesisUtterance with the text
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Apply voice characteristics
+      utterance.pitch = this.characteristics.pitch;
+      utterance.rate = this.characteristics.rate;
+      utterance.volume = this.characteristics.volume;
+      
+      // Get available voices
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        // Try to find a voice that matches the timbre characteristic
+        const voiceIndex = Math.floor(this.characteristics.timbre * voices.length);
+        utterance.voice = voices[Math.min(voiceIndex, voices.length - 1)];
       }
+      
+      // Create an audio element to play and capture the speech
+      const audioElement = document.createElement('audio');
+      
+      // Set up the speech synthesis events
+      utterance.onend = () => {
+        // When speech ends, resolve with the audio URL
+        resolve(this.createAudioFromText(text, this.characteristics!));
+      };
+      
+      utterance.onerror = (event) => {
+        console.error('Speech synthesis error:', event);
+        // Fallback to text-based audio generation
+        resolve(this.createAudioFromText(text, this.characteristics!));
+      };
+      
+      // Start speaking
+      window.speechSynthesis.speak(utterance);
+      
+      // Set a timeout in case onend doesn't fire
+      setTimeout(() => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          resolve(this.createAudioFromText(text, this.characteristics!));
+        }
+      }, Math.max(5000, text.length * 100));
     });
   }
   
-  // Helper function to convert AudioBuffer to WAV format
+  // Create audio from text using Web Audio API
+  private createAudioFromText(text: string, characteristics: VoiceCharacteristics): Blob {
+    // Create an audio buffer for the synthetic speech
+    const sampleRate = 44100;
+    const duration = Math.max(3, text.length * 0.1); // Estimate duration based on text length
+    const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+    const channelData = buffer.getChannelData(0);
+    
+    // Generate audio data based on text and voice characteristics
+    const words = text.split(/\s+/);
+    const wordDuration = duration / words.length;
+    
+    for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
+      const word = words[wordIndex];
+      const wordStart = wordIndex * wordDuration;
+      
+      for (let charIndex = 0; charIndex < word.length; charIndex++) {
+        const charCode = word.charCodeAt(charIndex);
+        
+        // Use character code to influence the frequency
+        const baseFreq = 100 + (charCode % 20) * 10 * characteristics.pitch;
+        
+        // Calculate time range for this character
+        const charDuration = wordDuration / word.length;
+        const startSample = Math.floor((wordStart + charIndex * charDuration) * sampleRate);
+        const endSample = Math.floor((wordStart + (charIndex + 1) * charDuration) * sampleRate);
+        
+        // Generate samples for this character
+        for (let i = startSample; i < endSample && i < channelData.length; i++) {
+          const t = (i - startSample) / sampleRate;
+          
+          // Add some variation to make it sound more natural
+          const vibrato = Math.sin(2 * Math.PI * 5 * t) * 3;
+          const freq = baseFreq + vibrato;
+          
+          // Generate the sample with harmonics
+          let sample = Math.sin(2 * Math.PI * freq * t);
+          sample += 0.5 * Math.sin(2 * Math.PI * freq * 2 * t);
+          sample += 0.25 * Math.sin(2 * Math.PI * freq * 3 * t);
+          
+          // Apply an envelope to simulate speech patterns
+          const envelope = 0.5 + 0.5 * Math.sin(Math.PI * t / charDuration);
+          
+          // Apply volume
+          channelData[i] = sample * envelope * characteristics.volume * 0.3;
+        }
+      }
+      
+      // Add a small pause between words
+      const pauseDuration = 0.1;
+      const pauseStart = Math.floor((wordStart + wordDuration - pauseDuration) * sampleRate);
+      const pauseEnd = Math.floor((wordStart + wordDuration) * sampleRate);
+      
+      for (let i = pauseStart; i < pauseEnd && i < channelData.length; i++) {
+        channelData[i] = 0;
+      }
+    }
+    
+    // Convert the buffer to a WAV file
+    return this.bufferToWav(buffer);
+  }
+  
+  // Convert AudioBuffer to WAV format
   private bufferToWav(buffer: AudioBuffer): Blob {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
@@ -300,6 +317,7 @@ export class SpeechGenerator {
     return new Blob([arrayBuffer], { type: 'audio/wav' });
   }
   
+  // Helper function to write strings to DataView
   private writeString(view: DataView, offset: number, string: string) {
     for (let i = 0; i < string.length; i++) {
       view.setUint8(offset + i, string.charCodeAt(i));
@@ -307,11 +325,11 @@ export class SpeechGenerator {
   }
 }
 
-// Main class that combines analysis and generation
+// Main voice cloning class
 export class VoiceCloner {
   private analyzer: VoiceAnalyzer;
   private generator: SpeechGenerator;
-  private characteristics: VoiceCharacteristics | null = null;
+  private averageCharacteristics: VoiceCharacteristics | null = null;
   
   constructor() {
     this.analyzer = new VoiceAnalyzer();
@@ -319,27 +337,65 @@ export class VoiceCloner {
   }
   
   // Process voice samples to extract characteristics
-  async processVoiceSamples(audioBlobs: Blob[]): Promise<void> {
-    this.characteristics = await this.analyzer.analyzeVoiceSamples(audioBlobs);
-    this.generator.setVoiceCharacteristics(this.characteristics);
+  async processVoiceSamples(samples: Blob[]): Promise<void> {
+    if (samples.length === 0) {
+      throw new Error('No voice samples provided');
+    }
+    
+    // Analyze each sample
+    const characteristicsList = await Promise.all(
+      samples.map(sample => this.analyzer.analyzeVoiceSample(sample))
+    );
+    
+    // Calculate average characteristics
+    const avgCharacteristics: VoiceCharacteristics = {
+      pitch: 0,
+      rate: 0,
+      volume: 0,
+      timbre: 0
+    };
+    
+    characteristicsList.forEach(characteristics => {
+      avgCharacteristics.pitch += characteristics.pitch;
+      avgCharacteristics.rate += characteristics.rate;
+      avgCharacteristics.volume += characteristics.volume;
+      avgCharacteristics.timbre += characteristics.timbre;
+    });
+    
+    avgCharacteristics.pitch /= characteristicsList.length;
+    avgCharacteristics.rate /= characteristicsList.length;
+    avgCharacteristics.volume /= characteristicsList.length;
+    avgCharacteristics.timbre /= characteristicsList.length;
+    
+    // Store the average characteristics
+    this.averageCharacteristics = avgCharacteristics;
+    
+    // Set the characteristics in the generator
+    this.generator.setVoiceCharacteristics(avgCharacteristics);
   }
   
   // Generate speech with the cloned voice
   async generateSpeech(text: string): Promise<Blob> {
-    if (!this.characteristics) {
-      throw new Error('Voice samples have not been processed yet');
+    if (!this.averageCharacteristics) {
+      throw new Error('Voice samples not processed yet');
     }
     
     return this.generator.generateSpeech(text);
   }
   
-  // Get the URL for an audio blob
+  // Create a URL for an audio blob
   static createAudioUrl(audioBlob: Blob): string {
     return URL.createObjectURL(audioBlob);
   }
-  
-  // Clean up resources
-  static revokeAudioUrl(url: string): void {
-    URL.revokeObjectURL(url);
+}
+
+// Singleton instance of VoiceCloner
+let voiceCloner: VoiceCloner | null = null;
+
+// Get the voice cloner instance
+export function getVoiceCloner(): VoiceCloner {
+  if (!voiceCloner) {
+    voiceCloner = new VoiceCloner();
   }
+  return voiceCloner;
 }
